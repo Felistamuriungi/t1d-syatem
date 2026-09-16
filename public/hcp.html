@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HCP Clinical Resolution</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #f4f7f6; margin: 0; padding: 20px; }
+    .header { max-width: 800px; margin: 0 auto 15px auto; display: flex; justify-content: space-between; align-items: center; background: #8e44ad; color: white; padding: 15px 20px; border-radius: 8px; }
+    .card { max-width: 800px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .ticket-card { background: #fcf8e3; border-left: 5px solid #f39c12; padding: 15px; margin-bottom: 12px; border-radius: 4px; }
+    .btn-complete { background: #8e44ad; color: white; border: none; padding: 10px; margin-top: 10px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; }
+    .btn-logout { background: #e74c3c; padding: 6px 12px; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <strong>👨‍⚕️ HCP Clinical Workspace</strong>
+    <span id="userDisplay"></span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="card">
+    <h2>Clinical Case Queue</h2>
+    <div id="referralQueue">Loading tickets...</div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const token = localStorage.getItem('t1d_jwt_token');
+    const user = JSON.parse(localStorage.getItem('t1d_user_info') || 'null');
+
+    if (!token || !user || user.roleId !== 3) {
+      window.location.href = '/index.html';
+    } else {
+      document.getElementById('userDisplay').innerText = user.name;
+    }
+
+    function logout() {
+      localStorage.clear();
+      window.location.href = '/index.html';
+    }
+
+    socket.on('referral_status_updated', () => fetchPendingReferrals());
+
+    async function fetchPendingReferrals() {
+      const res = await fetch('/api/referrals/pending');
+      const tickets = await res.json();
+      const container = document.getElementById('referralQueue');
+
+      if (!tickets || tickets.length === 0) {
+        container.innerHTML = '<p style="color: #27ae60;">No open cases awaiting clinical resolution.</p>';
+        return;
+      }
+
+      container.innerHTML = tickets.map(t => `
+        <div class="ticket-card">
+          <strong>Ticket #${t.ticket_id} - ${t.patient_name}</strong>
+          <p>Age: ${t.age} | RBS: <strong>${t.rbs_value} mmol/L</strong></p>
+          <button class="btn-complete" onclick="completeTicket(${t.ticket_id})">Complete Clinical Evaluation</button>
+        </div>
+      `).join('');
+    }
+
+    async function completeTicket(ticketId) {
+      const res = await fetch(`/api/referrals/${ticketId}/complete`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        alert(`Ticket #${ticketId} resolved.`);
+        fetchPendingReferrals();
+      }
+    }
+
+    fetchPendingReferrals();
+  </script>
+</body>
+</html>
