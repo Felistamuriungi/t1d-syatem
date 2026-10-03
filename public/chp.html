@@ -2,183 +2,240 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>CHP Field Screening</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CHP Field Workspace</title>
   <style>
-    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body { background-color: #f4f7f6; margin: 0; padding: 20px; }
-    .header { max-width: 600px; margin: 0 auto 15px auto; display: flex; justify-content: space-between; align-items: center; background: #27ae60; color: white; padding: 15px 20px; border-radius: 8px; }
-    .card { max-width: 600px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    label { display: block; margin-top: 10px; font-weight: 600; color: #34495e; }
-    input, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }
-    .checkbox-group { margin-top: 15px; display: flex; flex-direction: column; gap: 8px; }
-    button { width: 100%; background: #27ae60; color: white; border: none; padding: 12px; margin-top: 20px; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; }
-    button:hover { background: #219150; }
-    .btn-logout { background: #e74c3c; padding: 6px 12px; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #f4f7f6;
+      padding: 20px;
+    }
+    .header {
+      background-color: #27ae60;
+      color: white;
+      padding: 15px 25px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+    }
+    .btn-logout {
+      background-color: #e74c3c;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-logout:hover {
+      background-color: #c0392b;
+    }
+    .card {
+      background: white;
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    h2 {
+      margin-bottom: 20px;
+      color: #2c3e50;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      color: #333;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .symptoms-group {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 6px;
+      border: 1px solid #e9ecef;
+      margin-bottom: 20px;
+    }
+    .symptoms-title {
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .checkbox-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #444;
+      cursor: pointer;
+    }
+    .checkbox-item input {
+      width: auto;
+      cursor: pointer;
+    }
+    .btn-submit {
+      width: 100%;
+      background-color: #27ae60;
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .btn-submit:hover {
+      background-color: #219150;
+    }
   </style>
 </head>
 <body>
 
   <div class="header">
-    <strong>📱 CHP Workspace</strong>
-    <span id="userDisplay"></span>
-    <button class="btn-logout" onclick="logout()">Logout</button>
+    <h2>🩺 CHP Triage Workspace</h2>
+    <div>
+      <span id="user-display" style="margin-right: 15px; font-weight: 500;">CHP Officer</span>
+      <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
   </div>
 
   <div class="card">
-    <h2>T1D Field Screening Form</h2>
+    <h2>Patient Screening & Triage</h2>
     <form id="triageForm">
-      <label>Patient Full Name</label>
-      <input type="text" id="fullName" required placeholder="e.g. Jane Wanjiku">
-
-      <label>Age</label>
-      <input type="number" id="age" required placeholder="e.g. 12">
-
-      <label>Gender</label>
-      <select id="gender" required>
-        <option value="Female">Female</option>
-        <option value="Male">Male</option>
-      </select>
-
-      <label>Phone Contact</label>
-      <input type="text" id="contact" placeholder="0712345678">
-
-      <label>Random Blood Sugar (RBS) - mmol/L</label>
-      <input type="number" step="0.1" id="rbsValue" required placeholder="e.g. 11.5">
-
-      <div class="checkbox-group">
-        <strong>MoH 100 Cardinal Symptoms:</strong>
-        <label><input type="checkbox" id="polyuria"> Polyuria (Excessive Urination)</label>
-        <label><input type="checkbox" id="polydipsia"> Polydipsia (Excessive Thirst)</label>
-        <label><input type="checkbox" id="weightLoss"> Unexplained Weight Loss</label>
+      <div class="form-group">
+        <label for="fullName">Full Name</label>
+        <input type="text" id="fullName" placeholder="e.g. Gloria Wanja" required>
       </div>
 
-      <button type="submit">Submit Triage & Evaluate Risk</button>
+      <div class="form-group">
+        <label for="age">Age</label>
+        <input type="number" id="age" placeholder="e.g. 8" required>
+      </div>
+
+      <div class="form-group">
+        <label for="gender">Gender</label>
+        <select id="gender" required>
+          <option value="">Select Gender</option>
+          <option value="Female">Female</option>
+          <option value="Male">Male</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="contact">Contact Number</label>
+        <input type="text" id="contact" placeholder="07XXXXXXXX" required>
+      </div>
+
+      <div class="form-group">
+        <label for="rbsValue">Random Blood Sugar (mmol/L)</label>
+        <input type="number" step="0.1" id="rbsValue" placeholder="e.g. 11.5" required>
+      </div>
+
+      <div class="symptoms-group">
+        <span class="symptoms-title">Observed / Reported Symptoms</span>
+        <div class="checkbox-grid">
+          <label class="checkbox-item">
+            <input type="checkbox" name="symptoms" value="Frequent Urination (Polyuria)">
+            Frequent Urination (Polyuria)
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" name="symptoms" value="Excessive Thirst (Polydipsia)">
+            Excessive Thirst (Polydipsia)
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" name="symptoms" value="Unexplained Weight Loss">
+            Unexplained Weight Loss
+          </label>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-submit">Submit Triage Log</button>
     </form>
   </div>
 
   <script>
-    const token = localStorage.getItem('t1d_jwt_token');
-    const user = JSON.parse(localStorage.getItem('t1d_user_info') || 'null');
-
-    if (!token || !user || user.roleId !== 1) {
-      window.location.href = '/index.html';
-    } else {
-      document.getElementById('userDisplay').innerText = user.name;
-    }
-
-    function logout() {
-      localStorage.clear();
-      window.location.href = '/index.html';
-    }
+    document.addEventListener('DOMContentLoaded', () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('No active session found. Redirecting to login portal...');
+        window.location.href = '/index.html';
+      }
+    });
 
     document.getElementById('triageForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       
+      const token = localStorage.getItem('token');
+      
+      const selectedSymptoms = Array.from(
+        document.querySelectorAll('input[name="symptoms"]:checked')
+      ).map(cb => cb.value);
+
       const payload = {
         fullName: document.getElementById('fullName').value,
         age: parseInt(document.getElementById('age').value),
         gender: document.getElementById('gender').value,
         contact: document.getElementById('contact').value,
         rbsValue: parseFloat(document.getElementById('rbsValue').value),
-        polyuria: document.getElementById('polyuria').checked,
-        polydipsia: document.getElementById('polydipsia').checked,
-        weightLoss: document.getElementById('weightLoss').checked,
-        chpId: user.userId
+        symptoms: selectedSymptoms
       };
 
       try {
-        const res = await fetch('/api/triage', {
+        const res = await fetch('/api/chp/triage', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(payload)
         });
 
-        const result = await res.json();
-        
+        const data = await res.json();
+
         if (res.ok) {
-          const evalData = result.cdssEvaluation || {};
-          alert(`Evaluation Complete!\nRisk Level: ${evalData.riskLevel || 'N/A'}\nAction: ${evalData.actionNote || 'Recorded'}`);
+          if (data.riskLevel === 'High') {
+            alert(`⚠️ HIGH RISK DETECTED!\n\nPatient Triage ID: ${data.triageId}\nRisk Level: HIGH (${payload.rbsValue} mmol/L)\n\nAn urgent referral ticket has been automatically dispatched to the HRIO / Clinical team.`);
+          } else if (data.riskLevel === 'Moderate') {
+            alert(`⚡ MODERATE RISK\n\nPatient Triage ID: ${data.triageId}\nRisk Level: Moderate (${payload.rbsValue} mmol/L)\n\nAdvise lifestyle modifications and schedule follow-up.`);
+          } else {
+            alert(`✅ LOW RISK\n\nPatient Triage ID: ${data.triageId}\nRisk Level: Low (${payload.rbsValue} mmol/L)\n\nNormal glucose levels recorded.`);
+          }
+
           document.getElementById('triageForm').reset();
         } else {
-          alert(`Error: ${result.error || 'Submission failed'}`);
+          alert(`Error: ${data.error || 'Failed to submit triage log'}`);
         }
       } catch (err) {
-        console.error('Submission request failed:', err);
-        alert('Failed to connect to backend server.');
+        alert(`Network error: ${err.message}`);
       }
     });
+
+    function logout() {
+      localStorage.removeItem('token');
+      window.location.href = '/index.html';
+    }
   </script>
-  <script>
-  // 1. Register Service Worker
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('Service Worker Registered:', reg.scope))
-        .catch(err => console.error('SW Registration Failed:', err));
-    });
-  }
-
-  // 2. Setup IndexedDB for Offline Triage Queue
-  function openDB() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('T1D_Offline_DB', 1);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains('triage_queue')) {
-          db.createObjectStore('triage_queue', { keyPath: 'id', autoIncrement: true });
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  // 3. Save Record Offline
-  async function saveTriageOffline(formData) {
-    const db = await openDB();
-    const tx = db.transaction('triage_queue', 'readwrite');
-    tx.objectStore('triage_queue').add({ ...formData, timestamp: new Date() });
-    alert('⚠️ No internet connection. Triage record saved locally! It will auto-sync when online.');
-  }
-
-  // 4. Auto-Sync Stored Records When Internet Returns
-  window.addEventListener('online', async () => {
-    console.log('🌐 Connection restored. Syncing offline records...');
-    const db = await openDB();
-    const tx = db.transaction('triage_queue', 'readwrite');
-    const store = tx.objectStore('triage_queue');
-    const request = store.getAll();
-
-    request.onsuccess = async () => {
-      const records = request.result;
-      if (records.length === 0) return;
-
-      for (const record of records) {
-        try {
-          const res = await fetch('/api/triage', {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify(record)
-          });
-
-          if (res.ok) {
-            // RemoveSynced Item
-            const deleteTx = db.transaction('triage_queue', 'readwrite');
-            deleteTx.objectStore('triage_queue').delete(record.id);
-          }
-        } catch (err) {
-          console.error('Sync failed for record ID:', record.id, err);
-        }
-      }
-      alert(`✅ Connection restored! ${records.length} offline triage record(s) synced to database.`);
-    };
-  });
-</script>
 </body>
 </html>

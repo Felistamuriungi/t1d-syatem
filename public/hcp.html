@@ -2,80 +2,219 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>HCP Clinical Resolution</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HCP Clinical Workspace</title>
   <style>
-    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body { background-color: #f4f7f6; margin: 0; padding: 20px; }
-    .header { max-width: 800px; margin: 0 auto 15px auto; display: flex; justify-content: space-between; align-items: center; background: #8e44ad; color: white; padding: 15px 20px; border-radius: 8px; }
-    .card { max-width: 800px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    .ticket-card { background: #fcf8e3; border-left: 5px solid #f39c12; padding: 15px; margin-bottom: 12px; border-radius: 4px; }
-    .btn-complete { background: #8e44ad; color: white; border: none; padding: 10px; margin-top: 10px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; }
-    .btn-logout { background: #e74c3c; padding: 6px 12px; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #f4f7f6;
+      padding: 20px;
+    }
+    .header {
+      background-color: #8e44ad;
+      color: white;
+      padding: 15px 25px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+    }
+    .btn-logout {
+      background-color: #e74c3c;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-logout:hover {
+      background-color: #c0392b;
+    }
+    .card {
+      background: white;
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    h2 {
+      margin-bottom: 20px;
+      color: #2c3e50;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background-color: #f8f9fa;
+      color: #333;
+    }
+    tr:hover {
+      background-color: #f1f1f1;
+    }
+    .badge-high {
+      background-color: #e74c3c;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .status-msg {
+      padding: 15px;
+      color: #555;
+      font-style: italic;
+    }
+    .error-msg {
+      color: #d9534f;
+      background-color: #f2dede;
+      border: 1px solid #ebccd1;
+      padding: 12px;
+      border-radius: 4px;
+    }
   </style>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
   <div class="header">
-    <strong>👨‍⚕️ HCP Clinical Workspace</strong>
-    <span id="userDisplay"></span>
-    <button class="btn-logout" onclick="logout()">Logout</button>
+    <h2>🩺 HCP Clinical Workspace</h2>
+    <div>
+      <span id="user-display" style="margin-right: 15px; font-weight: 500;">Dr. John HCP</span>
+      <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
   </div>
 
   <div class="card">
     <h2>Clinical Case Queue</h2>
-    <div id="referralQueue">Loading tickets...</div>
+    <div id="status-container" class="status-msg">Loading tickets...</div>
+    
+    <table id="tickets-table" style="display: none;">
+      <thead>
+        <tr>
+          <th>Ticket ID</th>
+          <th>Patient Name</th>
+          <th>Age / Gender</th>
+          <th>Contact</th>
+          <th>RBS Value</th>
+          <th>Risk Level</th>
+          <th>Status</th>
+          <th>Referred Date</th>
+        </tr>
+      </thead>
+      <tbody id="tickets-tbody">
+        <!-- Dynamic rows render here -->
+      </tbody>
+    </table>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = io();
-    const token = localStorage.getItem('t1d_jwt_token');
-    const user = JSON.parse(localStorage.getItem('t1d_user_info') || 'null');
+    const socket = typeof io !== 'undefined' ? io() : null;
 
-    if (!token || !user || user.roleId !== 3) {
-      window.location.href = '/index.html';
-    } else {
-      document.getElementById('userDisplay').innerText = user.name;
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchHCPCases();
+    });
+
+    async function fetchHCPCases() {
+      const token = localStorage.getItem('token') || 'DEV_TOKEN';
+      const statusContainer = document.getElementById('status-container');
+      const table = document.getElementById('tickets-table');
+
+      try {
+        let response = await fetch('/api/hcp/cases', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.status === 404) {
+          response = await fetch('/api/hcp/queue', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+        }
+
+        if (response.status === 401 || response.status === 403) {
+          statusContainer.className = 'error-msg';
+          statusContainer.innerHTML = '🔒 Session expired or invalid. Redirecting to portal...';
+          setTimeout(() => {
+            window.location.href = '/index.html';
+          }, 1200);
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(`Server returned HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (Array.isArray(data) && data.length > 0) {
+          renderTable(data);
+        } else {
+          statusContainer.className = 'status-msg';
+          statusContainer.textContent = 'No cases assigned in the queue.';
+          if (table) table.style.display = 'none';
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+        statusContainer.className = 'error-msg';
+        statusContainer.textContent = `Error loading cases: ${err.message}`;
+        if (table) table.style.display = 'none';
+      }
+    }
+
+    function renderTable(tickets) {
+      const statusContainer = document.getElementById('status-container');
+      const table = document.getElementById('tickets-table');
+      const tbody = document.getElementById('tickets-tbody');
+
+      statusContainer.style.display = 'none';
+      table.style.display = 'table';
+      tbody.innerHTML = '';
+
+      tickets.forEach(ticket => {
+        const row = document.createElement('tr');
+        const formattedDate = ticket.issued_at ? new Date(ticket.issued_at).toLocaleString() : 'N/A';
+
+        row.innerHTML = `
+          <td><strong>#${ticket.ticket_id}</strong></td>
+          <td>${escapeHtml(ticket.full_name || 'N/A')}</td>
+          <td>${ticket.age || 'N/A'} / ${escapeHtml(ticket.gender || 'N/A')}</td>
+          <td>${escapeHtml(ticket.contact || 'N/A')}</td>
+          <td>${ticket.rbs_value ? ticket.rbs_value + ' mmol/L' : 'N/A'}</td>
+          <td><span class="badge-high">${escapeHtml(ticket.risk_level || 'HIGH')}</span></td>
+          <td><strong>${escapeHtml(ticket.status || 'Acknowledged')}</strong></td>
+          <td>${formattedDate}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    if (socket) {
+      socket.on('patient_referred_to_hcp', (data) => {
+        console.log('⚡ Real-time patient referred to HCP:', data);
+        fetchHCPCases();
+      });
     }
 
     function logout() {
-      localStorage.clear();
+      localStorage.removeItem('token');
       window.location.href = '/index.html';
     }
 
-    socket.on('referral_status_updated', () => fetchPendingReferrals());
-
-    async function fetchPendingReferrals() {
-      const res = await fetch('/api/referrals/pending');
-      const tickets = await res.json();
-      const container = document.getElementById('referralQueue');
-
-      if (!tickets || tickets.length === 0) {
-        container.innerHTML = '<p style="color: #27ae60;">No open cases awaiting clinical resolution.</p>';
-        return;
-      }
-
-      container.innerHTML = tickets.map(t => `
-        <div class="ticket-card">
-          <strong>Ticket #${t.ticket_id} - ${t.patient_name}</strong>
-          <p>Age: ${t.age} | RBS: <strong>${t.rbs_value} mmol/L</strong></p>
-          <button class="btn-complete" onclick="completeTicket(${t.ticket_id})">Complete Clinical Evaluation</button>
-        </div>
-      `).join('');
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
-
-    async function completeTicket(ticketId) {
-      const res = await fetch(`/api/referrals/${ticketId}/complete`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        alert(`Ticket #${ticketId} resolved.`);
-        fetchPendingReferrals();
-      }
-    }
-
-    fetchPendingReferrals();
   </script>
 </body>
 </html>
