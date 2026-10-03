@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CHP Field Screening</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #f4f7f6; margin: 0; padding: 20px; }
+    .header { max-width: 600px; margin: 0 auto 15px auto; display: flex; justify-content: space-between; align-items: center; background: #27ae60; color: white; padding: 15px 20px; border-radius: 8px; }
+    .card { max-width: 600px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    label { display: block; margin-top: 10px; font-weight: 600; color: #34495e; }
+    input, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    .checkbox-group { margin-top: 15px; display: flex; flex-direction: column; gap: 8px; }
+    button { width: 100%; background: #27ae60; color: white; border: none; padding: 12px; margin-top: 20px; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; }
+    button:hover { background: #219150; }
+    .btn-logout { background: #e74c3c; padding: 6px 12px; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <strong>📱 CHP Workspace</strong>
+    <span id="userDisplay"></span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="card">
+    <h2>T1D Field Screening Form</h2>
+    <form id="triageForm">
+      <label>Patient Full Name</label>
+      <input type="text" id="fullName" required placeholder="e.g. Jane Wanjiku">
+
+      <label>Age</label>
+      <input type="number" id="age" required placeholder="e.g. 12">
+
+      <label>Gender</label>
+      <select id="gender" required>
+        <option value="Female">Female</option>
+        <option value="Male">Male</option>
+      </select>
+
+      <label>Phone Contact</label>
+      <input type="text" id="contact" placeholder="0712345678">
+
+      <label>Random Blood Sugar (RBS) - mmol/L</label>
+      <input type="number" step="0.1" id="rbsValue" required placeholder="e.g. 11.5">
+
+      <div class="checkbox-group">
+        <strong>MoH 100 Cardinal Symptoms:</strong>
+        <label><input type="checkbox" id="polyuria"> Polyuria (Excessive Urination)</label>
+        <label><input type="checkbox" id="polydipsia"> Polydipsia (Excessive Thirst)</label>
+        <label><input type="checkbox" id="weightLoss"> Unexplained Weight Loss</label>
+      </div>
+
+      <button type="submit">Submit Triage & Evaluate Risk</button>
+    </form>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('t1d_jwt_token');
+    const user = JSON.parse(localStorage.getItem('t1d_user_info') || 'null');
+
+    if (!token || !user || user.roleId !== 1) {
+      window.location.href = '/index.html';
+    } else {
+      document.getElementById('userDisplay').innerText = user.name;
+    }
+
+    function logout() {
+      localStorage.clear();
+      window.location.href = '/index.html';
+    }
+
+    document.getElementById('triageForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const payload = {
+        fullName: document.getElementById('fullName').value,
+        age: parseInt(document.getElementById('age').value),
+        gender: document.getElementById('gender').value,
+        contact: document.getElementById('contact').value,
+        rbsValue: parseFloat(document.getElementById('rbsValue').value),
+        polyuria: document.getElementById('polyuria').checked,
+        polydipsia: document.getElementById('polydipsia').checked,
+        weightLoss: document.getElementById('weightLoss').checked,
+        chpId: user.userId
+      };
+
+      try {
+        const res = await fetch('/api/triage', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await res.json();
+        
+        if (res.ok) {
+          const evalData = result.cdssEvaluation || {};
+          alert(`Evaluation Complete!\nRisk Level: ${evalData.riskLevel || 'N/A'}\nAction: ${evalData.actionNote || 'Recorded'}`);
+          document.getElementById('triageForm').reset();
+        } else {
+          alert(`Error: ${result.error || 'Submission failed'}`);
+        }
+      } catch (err) {
+        console.error('Submission request failed:', err);
+        alert('Failed to connect to backend server.');
+      }
+    });
+  </script>
+</body>
+</html>

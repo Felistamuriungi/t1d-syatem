@@ -1,0 +1,5 @@
+0000000000000000000000000000000000000000 cc763fdf86cf830c011d9dfa5aba1bb6315f2d91 Felista Mwendwa <felista.muriungi@strathmore.edu> 1789574478 +0300	commit (initial): Initial commit: MoH 100 T1D PWA triage workflow
+cc763fdf86cf830c011d9dfa5aba1bb6315f2d91 0000000000000000000000000000000000000000 Felista Mwendwa <felista.muriungi@strathmore.edu> 1789574982 +0300	Branch: renamed refs/heads/master to refs/heads/main
+0000000000000000000000000000000000000000 cc763fdf86cf830c011d9dfa5aba1bb6315f2d91 Felista Mwendwa <felista.muriungi@strathmore.edu> 1789574982 +0300	Branch: renamed refs/heads/master to refs/heads/main
+cc763fdf86cf830c011d9dfa5aba1bb6315f2d91 b76999fb239c82aef250d941c85973f503a85edb Felista Mwendwa <felista.muriungi@strathmore.edu> 1789575365 +0300	commit: Fix gitignore location and remove sensitive files from tracking
+b76999fb239c82aef250d941c85973f503a85edb cad6189ee9693c0d60d719a1a1849635f14b467a Felista Mwendwa <felista.muriungi@strathmore.edu> 1789575780 +0300	commit: Docs: Add project documentation and setup guide
