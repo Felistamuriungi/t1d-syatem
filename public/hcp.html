@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0d6efd">
   <title>HCP Clinical Workspace</title>
   <style>
     * {
@@ -42,10 +43,15 @@
       padding: 25px;
       border-radius: 8px;
       box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
     }
     h2 {
       margin-bottom: 20px;
       color: #2c3e50;
+    }
+    h3 {
+      color: #2c3e50;
+      margin-bottom: 15px;
     }
     table {
       width: 100%;
@@ -84,6 +90,54 @@
       padding: 12px;
       border-radius: 4px;
     }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #333;
+    }
+    .form-group input, .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .btn-action {
+      background-color: #8e44ad;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .btn-action:hover {
+      background-color: #7d3c98;
+    }
+    .btn-submit {
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      width: 100%;
+    }
+    .selected-patient-banner {
+      background-color: #e8f8f5;
+      border: 1px solid #a3e4d7;
+      padding: 10px 15px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      color: #117a65;
+      font-weight: bold;
+    }
   </style>
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -97,6 +151,7 @@
     </div>
   </div>
 
+  <!-- 1. Clinical Case Queue -->
   <div class="card">
     <h2>Clinical Case Queue</h2>
     <div id="status-container" class="status-msg">Loading tickets...</div>
@@ -112,12 +167,40 @@
           <th>Risk Level</th>
           <th>Status</th>
           <th>Referred Date</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody id="tickets-tbody">
         <!-- Dynamic rows render here -->
       </tbody>
     </table>
+  </div>
+
+  <!-- 2. Patient Follow-Up & Review Panel -->
+  <div class="card">
+    <h3>📅 Schedule Patient Review / Progress Visit</h3>
+    <div id="selected-banner" class="selected-patient-banner" style="display: none;"></div>
+
+    <form id="followupForm">
+      <input type="hidden" id="selectedPatientId" value="">
+      
+      <div class="form-group">
+        <label>Next Review Date</label>
+        <input type="date" id="scheduledDate" required>
+      </div>
+
+      <div class="form-group">
+        <label>Target Glycemic Level (mmol/L)</label>
+        <input type="number" step="0.1" id="targetRbs" placeholder="e.g. 7.0" required>
+      </div>
+
+      <div class="form-group">
+        <label>Clinical Adjustment & Insulin Notes</label>
+        <textarea id="clinicalNotes" rows="3" placeholder="Record dose adjustments, compliance notes, or complications..."></textarea>
+      </div>
+
+      <button type="submit" class="btn-submit" style="background-color: #2980b9;">Save Progress Appointment</button>
+    </form>
   </div>
 
   <script>
@@ -195,10 +278,65 @@
           <td><span class="badge-high">${escapeHtml(ticket.risk_level || 'HIGH')}</span></td>
           <td><strong>${escapeHtml(ticket.status || 'Acknowledged')}</strong></td>
           <td>${formattedDate}</td>
+          <td>
+            <button class="btn-action" onclick="selectPatientForReview('${ticket.patient_id}', '${escapeHtml(ticket.full_name)}')">
+              Select & Schedule
+            </button>
+          </td>
         `;
         tbody.appendChild(row);
       });
     }
+
+    function selectPatientForReview(patientId, fullName) {
+      document.getElementById('selectedPatientId').value = patientId;
+      const banner = document.getElementById('selected-banner');
+      banner.style.display = 'block';
+      banner.textContent = `📋 Selected Patient: ${fullName} (ID: ${patientId})`;
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
+
+    // --- Schedule Follow-up Appointment Submission ---
+    document.getElementById('followupForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = localStorage.getItem('token') || 'DEV_TOKEN';
+      const patientId = document.getElementById('selectedPatientId').value;
+
+      if (!patientId) {
+        alert('Please select a patient from the queue above first.');
+        return;
+      }
+
+      const payload = {
+        patientId: parseInt(patientId, 10),
+        scheduledDate: document.getElementById('scheduledDate').value,
+        targetRbs: parseFloat(document.getElementById('targetRbs').value),
+        clinicalNotes: document.getElementById('clinicalNotes').value
+      };
+
+      try {
+        const res = await fetch('/api/hcp/schedule-followup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          alert('✅ Follow-up visit scheduled. Patient record updated.');
+          document.getElementById('followupForm').reset();
+          document.getElementById('selected-banner').style.display = 'none';
+        } else {
+          const errData = await res.json();
+          alert(`Error saving review appointment: ${errData.error || 'Server error'}`);
+        }
+      } catch (err) {
+        console.error('Submission error:', err);
+        alert('Failed to connect to the server.');
+      }
+    });
 
     if (socket) {
       socket.on('patient_referred_to_hcp', (data) => {

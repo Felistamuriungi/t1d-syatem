@@ -2,7 +2,14 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
-const db = require('./db'); // Adjust path if your DB module is located elsewhere
+const db = require('./db');
+
+// Initialize Africa's Talking SMS Gateway
+const AfricasTalking = require('africastalking')({
+  apiKey: process.env.AT_API_KEY || 'YOUR_SANDBOX_API_KEY',
+  username: process.env.AT_USERNAME || 'sandbox'
+});
+const sms = AfricasTalking.SMS;
 
 const app = express();
 const server = http.createServer(app);
@@ -52,7 +59,6 @@ io.on('connection', (socket) => {
 app.post('/api/auth/login', async (req, res) => {
   const { phone } = req.body;
 
-  // Automatically assign role depending on phone number entered
   let roleId = 2; // Default HRIO
   if (phone.startsWith('073') || phone.startsWith('070')) {
     roleId = 3; // HCP
@@ -149,6 +155,7 @@ const handleHCPCases = async (req, res) => {
           rt.facility_id, 
           rt.status, 
           rt.issued_at,
+          p.patient_id,
           p.full_name, 
           p.age, 
           p.gender, 
@@ -171,12 +178,7 @@ const handleHCPCases = async (req, res) => {
 app.get('/api/hcp/cases', authenticateToken, handleHCPCases);
 app.get('/api/hcp/queue', authenticateToken, handleHCPCases);
 
-// Start Server
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
-
-// --- 5. CHP TRIAGE SUBMISSION ROUTE ---
+// --- 5. CHP TRIAGE SUBMISSION ROUTE (WITH AUTOMATED SMS DISPATCH) ---
 app.post('/api/chp/triage', authenticateToken, async (req, res) => {
   const { fullName, age, gender, contact, rbsValue, symptoms } = req.body;
 
@@ -218,7 +220,7 @@ app.post('/api/chp/triage', authenticateToken, async (req, res) => {
 
     const triageId = triageRes.rows[0].triage_id;
 
-    // 4. Create referral ticket if high risk
+    // 4. Handle High Risk referrals & dispatch automated SMS
     if (riskLevel === 'High') {
       const ticketRes = await db.query(
         `INSERT INTO referral_tickets (triage_id, status)
@@ -227,8 +229,24 @@ app.post('/api/chp/triage', authenticateToken, async (req, res) => {
         [triageId]
       );
 
-      // Emit socket notification for HRIO
+      // Emit socket notification for HRIO dashboard
       io.emit('new_referral', ticketRes.rows[0]);
+
+      // Format phone number for local SMS gateway (+254...)
+      let formattedPhone = contact;
+      if (formattedPhone.startsWith('0')) {
+        formattedPhone = '+254' + formattedPhone.substring(1);
+      }
+
+      const smsOptions = {
+        to: [formattedPhone],
+        message: `ALERT: Dear ${fullName}, your T1D screening with the CHP indicates high blood sugar (${rbsValue} mmol/L). An urgent clinical appointment has been scheduled at the county hospital. Please present to the lab/pediatric clinic immediately.`
+      };
+
+      // Dispatch SMS alert asynchronously
+      sms.send(smsOptions)
+        .then(response => console.log('📲 SMS sent successfully:', response))
+        .catch(error => console.error('❌ Error sending SMS:', error));
     }
 
     res.status(201).json({
@@ -240,4 +258,52 @@ app.post('/api/chp/triage', authenticateToken, async (req, res) => {
     console.error('❌ TRIAGE ERROR:', err);
     res.status(500).json({ error: `Database error: ${err.message}` });
   }
+});
+
+// --- 6. SCHEDULE FOLLOW-UP VISITS (HCP Interface) ---
+app.post('/api/hcp/schedule-followup', authenticateToken, async (req, res) => {
+  const { patientId, scheduledDate, targetRbs, clinicalNotes } = req.body;
+  const hcpId = req.user.userId;
+
+  try {
+    const result = await db.query(
+      `INSERT INTO follow_up_appointments (patient_id, hcp_id, scheduled_date, target_rbs, clinical_notes) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [patientId, hcpId, scheduledDate, targetRbs, clinicalNotes]
+    );
+
+    res.json({ 
+      message: 'Follow-up review scheduled successfully', 
+      appointment: result.rows[0] 
+    });
+  } catch (err) {
+    console.error('❌ SCHEDULE FOLLOWUP ERROR:', err);
+    res.status(500).json({ error: `Failed to schedule appointment: ${err.message}` });
+  }
+});
+
+// --- 7. FETCH PATIENT APPOINTMENT HISTORY ---
+app.get('/api/hcp/patient-history/:patientId', authenticateToken, async (req, res) => {
+  const { patientId } = req.params;
+
+  try {
+    const history = await db.query(
+      `SELECT f.*, COALESCE(u.full_name, 'Attending HCP') as doctor_name 
+       FROM follow_up_appointments f
+       LEFT JOIN users u ON f.hcp_id = u.user_id
+       WHERE f.patient_id = $1 
+       ORDER BY f.scheduled_date DESC`,
+      [patientId]
+    );
+
+    res.json(history.rows || []);
+  } catch (err) {
+    console.error('❌ FETCH HISTORY ERROR:', err);
+    res.status(500).json({ error: `Failed to retrieve patient history: ${err.message}` });
+  }
+});
+
+// Start Server
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });

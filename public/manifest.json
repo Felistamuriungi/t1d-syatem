@@ -3,12 +3,12 @@
   "name": "MoH 100 T1D Screening & Triage PWA",
   "icons": [
     {
-      "src": "https://via.placeholder.com/192",
+      "src": "/icons/icon-192.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "https://via.placeholder.com/512",
+      "src": "/icons/icon-512.png",
       "type": "image/png",
       "sizes": "512x512"
     }
