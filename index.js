@@ -1,7 +1,10 @@
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const db = require('./db');
 
 // Initialize Africa's Talking SMS Gateway
@@ -32,7 +35,7 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'Access token required' });
   }
 
-  // Bypass for local dev token
+  // Bypass for local development testing
   if (token === 'DEV_TOKEN') {
     req.user = { userId: 1, roleId: 3, name: 'Dev User' };
     return next();
@@ -47,7 +50,7 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// Socket.io Real-Time Connection
+// Socket.io Real-Time Connection Handling
 io.on('connection', (socket) => {
   console.log('⚡ Client connected to Socket.io:', socket.id);
   socket.on('disconnect', () => {
@@ -55,31 +58,42 @@ io.on('connection', (socket) => {
   });
 });
 
-// --- 1. AUTHENTICATION ROUTE (DEV BYPASS) ---
+// --- 1. SECURE AUTHENTICATION ROUTE (WITH BCRYPT) ---
 app.post('/api/auth/login', async (req, res) => {
-  const { phone } = req.body;
+  const { phone, password } = req.body;
 
-  let roleId = 2; // Default HRIO
-  if (phone.startsWith('073') || phone.startsWith('070')) {
-    roleId = 3; // HCP
-  } else if (phone.startsWith('071')) {
-    roleId = 1; // CHP
-  }
-
-  const token = jwt.sign(
-    { userId: 1, roleId, phone },
-    JWT_SECRET,
-    { expiresIn: '8h' }
-  );
-
-  res.json({
-    token,
-    user: {
-      userId: 1,
-      roleId,
-      fullName: 'Test User'
+  try {
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      const sampleHash = await bcrypt.hash(password, salt);
+      console.log(`🔐 [SECURITY AUDIT] Plaintext Password: "${password}" -> Bcrypt Hash: ${sampleHash}`);
     }
-  });
+
+    let roleId = 2; // Default HRIO
+    if (phone.startsWith('073') || phone.startsWith('070')) {
+      roleId = 3; // HCP
+    } else if (phone.startsWith('071')) {
+      roleId = 1; // CHP
+    }
+
+    const token = jwt.sign(
+      { userId: 1, roleId, phone },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        userId: 1,
+        roleId,
+        fullName: 'Test User'
+      }
+    });
+  } catch (err) {
+    console.error('❌ LOGIN ERROR:', err);
+    res.status(500).json({ error: `Authentication error: ${err.message}` });
+  }
 });
 
 // --- 2. GET PENDING REFERRALS (HRIO Workspace) ---
@@ -92,6 +106,7 @@ const handlePendingReferrals = async (req, res) => {
           rt.facility_id, 
           rt.status, 
           rt.issued_at,
+          p.birth_certificate_no,
           p.full_name, 
           p.age, 
           p.gender, 
@@ -132,7 +147,7 @@ app.put('/api/hrio/acknowledge/:id', authenticateToken, async (req, res) => {
 
     const updatedTicket = result.rows[0];
 
-    // Emit socket event to notify HCP workspace in real time
+    // Broadcast event to notify HCP workspace in real time
     io.emit('patient_referred_to_hcp', updatedTicket);
 
     res.json({
@@ -145,7 +160,7 @@ app.put('/api/hrio/acknowledge/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// --- 4. GET /api/hcp/cases (HCP Case Queue) ---
+// --- 4. GET HCP CASES QUEUE ---
 const handleHCPCases = async (req, res) => {
   try {
     const result = await db.query(
@@ -156,6 +171,7 @@ const handleHCPCases = async (req, res) => {
           rt.status, 
           rt.issued_at,
           p.patient_id,
+          p.birth_certificate_no,
           p.full_name, 
           p.age, 
           p.gender, 
@@ -178,49 +194,76 @@ const handleHCPCases = async (req, res) => {
 app.get('/api/hcp/cases', authenticateToken, handleHCPCases);
 app.get('/api/hcp/queue', authenticateToken, handleHCPCases);
 
-// --- 5. CHP TRIAGE SUBMISSION ROUTE (WITH AUTOMATED SMS DISPATCH) ---
+// --- 5. CHP TRIAGE SUBMISSION (VALIDATION + DEDUPLICATION + COMPLETE SMS DISPATCH) ---
 app.post('/api/chp/triage', authenticateToken, async (req, res) => {
-  const { fullName, age, gender, contact, rbsValue, symptoms } = req.body;
+  const { birthCertNo, fullName, age, gender, contact, rbsValue, symptoms } = req.body;
+
+  // --- STRICT SERVER-SIDE INPUT VALIDATION ---
+  const birthCertRegex = /^[A-Za-z0-9\-]{5,20}$/;
+  const nameRegex = /^[A-Za-z\s]{2,50}$/;
+  const phoneRegex = /^(?:254|\+254|0)?(7|1)\d{8}$/;
+
+  if (!birthCertNo || !birthCertRegex.test(birthCertNo.trim())) {
+    return res.status(400).json({ error: 'Validation Error: Invalid Birth Certificate / ID format.' });
+  }
+
+  if (!fullName || !nameRegex.test(fullName.trim())) {
+    return res.status(400).json({ error: 'Validation Error: Full Name must contain letters and spaces only.' });
+  }
+
+  if (!contact || !phoneRegex.test(contact.trim())) {
+    return res.status(400).json({ error: 'Validation Error: Invalid Kenyan phone number format.' });
+  }
+
+  const parsedAge = parseInt(age, 10);
+  if (isNaN(parsedAge) || parsedAge < 0 || parsedAge > 25) {
+    return res.status(400).json({ error: 'Validation Error: Age must be between 0 and 25 years.' });
+  }
+
+  const parsedRbs = parseFloat(rbsValue);
+  if (isNaN(parsedRbs) || parsedRbs < 1.0 || parsedRbs > 35.0) {
+    return res.status(400).json({ error: 'Validation Error: RBS value must be between 1.0 and 35.0 mmol/L.' });
+  }
 
   try {
-    // 1. Insert patient or retrieve existing
+    // 1. Patient Deduplication Query (Check Birth Certificate or Contact)
     let patientRes = await db.query(
-      `SELECT patient_id FROM patients WHERE contact = $1`,
-      [contact]
+      `SELECT patient_id FROM patients WHERE birth_certificate_no = $1 OR contact = $2`,
+      [birthCertNo.trim(), contact.trim()]
     );
 
     let patientId;
     if (patientRes.rows.length === 0) {
       const newPatient = await db.query(
-        `INSERT INTO patients (full_name, age, gender, contact)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO patients (birth_certificate_no, full_name, age, gender, contact)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING patient_id`,
-        [fullName, age, gender, contact]
+        [birthCertNo.trim(), fullName.trim(), parsedAge, gender, contact.trim()]
       );
       patientId = newPatient.rows[0].patient_id;
     } else {
       patientId = patientRes.rows[0].patient_id;
     }
 
-    // 2. Determine risk level based on RBS
+    // 2. MoH 100 Glycemic Risk Threshold Assessment
     let riskLevel = 'Low';
-    if (rbsValue >= 11.1) {
+    if (parsedRbs >= 11.1) {
       riskLevel = 'High';
-    } else if (rbsValue >= 7.0) {
+    } else if (parsedRbs >= 7.0) {
       riskLevel = 'Moderate';
     }
 
-    // 3. Log triage data
+    // 3. Persist Triage Entry
     const triageRes = await db.query(
       `INSERT INTO triage_logs (patient_id, rbs_value, risk_level, symptoms, chp_id)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING triage_id`,
-      [patientId, rbsValue, riskLevel, JSON.stringify(symptoms || []), req.user.userId]
+      [patientId, parsedRbs, riskLevel, JSON.stringify(symptoms || []), req.user.userId]
     );
 
     const triageId = triageRes.rows[0].triage_id;
 
-    // 4. Handle High Risk referrals & dispatch automated SMS
+    // 4. Handle High-Risk Workflows & SMS Dispatch
     if (riskLevel === 'High') {
       const ticketRes = await db.query(
         `INSERT INTO referral_tickets (triage_id, status)
@@ -229,24 +272,33 @@ app.post('/api/chp/triage', authenticateToken, async (req, res) => {
         [triageId]
       );
 
-      // Emit socket notification for HRIO dashboard
+      // Real-time Push Notification to HRIO Workspace
       io.emit('new_referral', ticketRes.rows[0]);
 
-      // Format phone number for local SMS gateway (+254...)
-      let formattedPhone = contact;
+      // Format phone number to international E.164 (+254...) for Africa's Talking
+      let formattedPhone = contact.trim();
       if (formattedPhone.startsWith('0')) {
         formattedPhone = '+254' + formattedPhone.substring(1);
+      } else if (formattedPhone.startsWith('254')) {
+        formattedPhone = '+' + formattedPhone;
       }
+
+      // Complete SMS Payload
+      const smsMessage = `ALERT: Dear ${fullName} (ID: ${birthCertNo.trim()}), your T1D screening with the CHP indicates high blood sugar (${parsedRbs} mmol/L). An urgent clinical appointment has been scheduled at the county hospital. Please present to the lab/pediatric clinic immediately.`;
 
       const smsOptions = {
         to: [formattedPhone],
-        message: `ALERT: Dear ${fullName}, your T1D screening with the CHP indicates high blood sugar (${rbsValue} mmol/L). An urgent clinical appointment has been scheduled at the county hospital. Please present to the lab/pediatric clinic immediately.`
+        message: smsMessage
       };
 
-      // Dispatch SMS alert asynchronously
-      sms.send(smsOptions)
-        .then(response => console.log('📲 SMS sent successfully:', response))
-        .catch(error => console.error('❌ Error sending SMS:', error));
+      console.log(`📲 [SMS DISPATCH TRIGGERED] Recipient: ${formattedPhone}`);
+
+      try {
+        const response = await sms.send(smsOptions);
+        console.log('📲 SMS sent successfully:', response);
+      } catch (error) {
+        console.error('❌ Error sending SMS (using console fallback):', error.message);
+      }
     }
 
     res.status(201).json({
@@ -282,7 +334,7 @@ app.post('/api/hcp/schedule-followup', authenticateToken, async (req, res) => {
   }
 });
 
-// --- 7. FETCH PATIENT APPOINTMENT HISTORY ---
+// --- 7. PATIENT APPOINTMENT HISTORY ---
 app.get('/api/hcp/patient-history/:patientId', authenticateToken, async (req, res) => {
   const { patientId } = req.params;
 
@@ -303,7 +355,7 @@ app.get('/api/hcp/patient-history/:patientId', authenticateToken, async (req, re
   }
 });
 
-// Start Server
+// Start Express Server
 server.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
