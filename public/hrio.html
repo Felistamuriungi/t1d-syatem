@@ -2,273 +2,270 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0d6efd">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoH 100 T1D - HRIO Referral Management Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
-  <title>HRIO Intake Workspace</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      background-color: #f4f7f6;
-      padding: 20px;
-    }
-    .header {
-      background-color: #3498db;
-      color: white;
-      padding: 15px 25px;
-      border-radius: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 25px;
-    }
-    .btn-logout {
-      background-color: #e74c3c;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    .btn-logout:hover {
-      background-color: #c0392b;
-    }
-    .card {
-      background: white;
-      padding: 25px;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-    }
-    h2 {
-      margin-bottom: 20px;
-      color: #2c3e50;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-    th, td {
-      padding: 12px 15px;
-      text-align: left;
-      border-bottom: 1px solid #ddd;
-    }
-    th {
-      background-color: #f8f9fa;
-      color: #333;
-    }
-    tr:hover {
-      background-color: #f1f1f1;
-    }
-    .badge-high {
-      background-color: #e74c3c;
-      color: white;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: bold;
-    }
-    .btn-ack {
-      background-color: #2ecc71;
-      color: white;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    .btn-ack:hover {
-      background-color: #27ae60;
-    }
-    .status-msg {
-      padding: 15px;
-      color: #555;
-      font-style: italic;
-    }
-    .error-msg {
-      color: #d9534f;
-      background-color: #f2dede;
-      border: 1px solid #ebccd1;
-      padding: 12px;
-      border-radius: 4px;
-    }
-  </style>
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Chart.js CDN for Health Analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
-  <div class="header">
-    <h2>🏥 HRIO Intake Workspace</h2>
+  <!-- Top Navigation Header -->
+  <div class="header-bar">
     <div>
-      <span id="user-display" style="margin-right: 15px; font-weight: 500;">Dr. Sarah HRIO</span>
-      <button class="btn-logout" onclick="logout()">Logout</button>
+      <h4 class="m-0 font-weight-bold">MoH 100 Referral Management</h4>
+      <small>Health Record & Information Officer (HRIO) Workspace</small>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <span id="networkStatus" class="badge network-badge badge-online">🌐 System Connected</span>
+      <button class="btn btn-outline-light btn-sm" onclick="logout()">Logout</button>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Pending Facility Referrals</h2>
-    <div id="status-container" class="status-msg">Loading tickets...</div>
+  <div class="container-fluid px-4 mb-5">
     
-    <table id="tickets-table" style="display: none;">
-      <thead>
-        <tr>
-          <th>Ticket ID</th>
-          <th>Patient Name</th>
-          <th>Age / Gender</th>
-          <th>Contact</th>
-          <th>RBS Value</th>
-          <th>Risk Level</th>
-          <th>Date Issued</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody id="tickets-tbody">
-        <!-- Dynamic rows render here -->
-      </tbody>
-    </table>
+    <!-- Summary Metrics Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <div class="card card-custom p-3 border-start border-primary border-4">
+          <div class="text-muted small text-uppercase font-weight-bold">Total Triage Logs</div>
+          <div class="h3 font-weight-bold text-dark m-0" id="statTotal">0</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card card-custom p-3 border-start border-danger border-4">
+          <div class="text-muted small text-uppercase font-weight-bold">High Risk Referrals</div>
+          <div class="h3 font-weight-bold text-danger m-0" id="statHighRisk">0</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card card-custom p-3 border-start border-warning border-4">
+          <div class="text-muted small text-uppercase font-weight-bold">Pending Acknowledgment</div>
+          <div class="h3 font-weight-bold text-warning m-0" id="statPending">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Epidemiological Visual Analytics Section -->
+    <div class="row g-3 mb-4">
+      
+      <!-- Chart 1: Risk Level Distribution -->
+      <div class="col-md-6">
+        <div class="card card-custom">
+          <div class="card-header card-header-custom">
+            📊 GLYCEMIC RISK DISTRIBUTION
+          </div>
+          <div class="card-body d-flex justify-content-center align-items-center" style="min-height: 260px;">
+            <canvas id="riskDistributionChart" style="max-height: 240px;"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chart 2: Referral Status Tracker -->
+      <div class="col-md-6">
+        <div class="card card-custom">
+          <div class="card-header card-header-custom">
+            📈 REFERRAL TICKET WORKFLOW STATUS
+          </div>
+          <div class="card-body d-flex justify-content-center align-items-center" style="min-height: 260px;">
+            <canvas id="statusChart" style="max-height: 240px;"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Referral Tickets Data Table -->
+    <div class="card card-custom">
+      <div class="card-header card-header-custom justify-content-between">
+        <span>📋 INCOMING HIGH-RISK REFERRAL TICKETS</span>
+        <button class="btn btn-sm btn-outline-primary" onclick="loadTriageLogs()">🔄 Refresh Queue</button>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle m-0">
+            <thead class="table-light">
+              <tr>
+                <th>Ticket ID</th>
+                <th>Patient Name</th>
+                <th>ID / Birth Cert</th>
+                <th>Age / Gender</th>
+                <th>RBS (mmol/L)</th>
+                <th>Contact</th>
+                <th>Triage Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="referralTableBody">
+              <tr>
+                <td colspan="8" class="text-center py-4 text-muted">Loading referral queue...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = typeof io !== 'undefined' ? io() : null;
+    const socket = io();
 
-    document.addEventListener('DOMContentLoaded', () => {
-      // Unregister any active offline Service Workers interfering with responses
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-          for (let registration of registrations) {
-            registration.unregister();
-          }
-        });
-      }
+    let riskChartInstance = null;
+    let statusChartInstance = null;
 
-      // Auto-set development token if missing so testing never breaks
-      if (!localStorage.getItem('token')) {
-        localStorage.setItem('token', 'DEV_TOKEN');
-      }
-
-      fetchPendingReferrals();
+    socket.on('high_risk_alert', (data) => {
+      alert(`🚨 NEW HIGH RISK REFERRAL ALERT!\nPatient: ${data.fullName}\nRBS: ${data.rbsValue} mmol/L`);
+      loadTriageLogs();
     });
 
-    async function fetchPendingReferrals() {
+    async function loadTriageLogs() {
       const token = localStorage.getItem('token') || 'DEV_TOKEN';
-      const statusContainer = document.getElementById('status-container');
-      const table = document.getElementById('tickets-table');
-
       try {
-        // Fallback-aware fetch trying both route names
-        let response = await fetch('/api/hrio/pending', {
+        const res = await fetch('/api/hrio/referrals', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (response.status === 404) {
-          response = await fetch('/api/referrals/pending', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-        }
-
-        if (response.status === 401 || response.status === 403) {
-          statusContainer.className = 'error-msg';
-          statusContainer.innerHTML = '🔒 Token rejected by server. Ensure the <code>DEV_TOKEN</code> rule is present in <code>authenticateToken</code> in <code>index.js</code>.';
-          if (table) table.style.display = 'none';
-          return;
-        }
-
-        if (!response.ok) {
-          throw new Error(`Server returned HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
         
-        if (Array.isArray(data) && data.length > 0) {
-          renderTable(data);
-        } else {
-          statusContainer.className = 'status-msg';
-          statusContainer.textContent = 'No pending referrals found.';
-          if (table) table.style.display = 'none';
-        }
+        if (!res.ok) throw new Error('Failed to fetch referrals.');
+        
+        const data = await res.json();
+        renderTableAndCharts(data);
       } catch (err) {
-        console.error('Fetch error:', err);
-        statusContainer.className = 'error-msg';
-        statusContainer.textContent = `Error loading tickets: ${err.message}`;
-        if (table) table.style.display = 'none';
+        document.getElementById('referralTableBody').innerHTML = `
+          <tr><td colspan="8" class="text-center text-danger py-4">Error loading referral data. Ensure server is running.</td></tr>
+        `;
       }
     }
 
-    function renderTable(tickets) {
-      const statusContainer = document.getElementById('status-container');
-      const table = document.getElementById('tickets-table');
-      const tbody = document.getElementById('tickets-tbody');
-
-      statusContainer.style.display = 'none';
-      table.style.display = 'table';
+    function renderTableAndCharts(tickets) {
+      const tbody = document.getElementById('referralTableBody');
       tbody.innerHTML = '';
 
-      tickets.forEach(ticket => {
-        const row = document.createElement('tr');
-        const formattedDate = ticket.issued_at ? new Date(ticket.issued_at).toLocaleString() : 'N/A';
+      let total = tickets.length;
+      let highRiskCount = tickets.filter(t => t.risk_level === 'High' || parseFloat(t.rbs_value) >= 11.1).length;
+      let moderateRiskCount = tickets.filter(t => t.risk_level === 'Moderate' || (parseFloat(t.rbs_value) >= 7.0 && parseFloat(t.rbs_value) < 11.1)).length;
+      let lowRiskCount = total - highRiskCount - moderateRiskCount;
+      if (lowRiskCount < 0) lowRiskCount = 0;
 
-        row.innerHTML = `
-          <td><strong>#${ticket.ticket_id}</strong></td>
-          <td>${escapeHtml(ticket.full_name || 'N/A')}</td>
-          <td>${ticket.age || 'N/A'} / ${escapeHtml(ticket.gender || 'N/A')}</td>
-          <td>${escapeHtml(ticket.contact || 'N/A')}</td>
-          <td>${ticket.rbs_value ? ticket.rbs_value + ' mmol/L' : 'N/A'}</td>
-          <td><span class="badge-high">${escapeHtml(ticket.risk_level || 'HIGH')}</span></td>
-          <td>${formattedDate}</td>
+      let pendingCount = tickets.filter(t => t.status === 'Pending').length;
+      let acknowledgedCount = tickets.filter(t => t.status === 'Acknowledged').length;
+
+      document.getElementById('statTotal').textContent = total;
+      document.getElementById('statHighRisk').textContent = highRiskCount;
+      document.getElementById('statPending').textContent = pendingCount;
+
+      // Update Charts
+      updateAnalyticsCharts(highRiskCount, moderateRiskCount, lowRiskCount, pendingCount, acknowledgedCount);
+
+      if (tickets.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-muted">No pending referral tickets available.</td></tr>`;
+        return;
+      }
+
+      tickets.forEach(ticket => {
+        const tr = document.createElement('tr');
+        const statusBadge = ticket.status === 'Pending' 
+          ? '<span class="badge bg-warning text-dark">Pending</span>'
+          : '<span class="badge bg-success">Acknowledged</span>';
+
+        tr.innerHTML = `
+          <td class="font-weight-bold">#TKT-${ticket.ticket_id}</td>
+          <td>${ticket.full_name}</td>
+          <td><code>${ticket.birth_cert_no}</code></td>
+          <td>${ticket.age} yrs / ${ticket.gender}</td>
+          <td><strong class="text-danger">${ticket.rbs_value}</strong></td>
+          <td>${ticket.contact}</td>
+          <td>${statusBadge}</td>
           <td>
-            <button class="btn-ack" onclick="acknowledgeTicket(${ticket.ticket_id})">
-              Acknowledge & Refer
-            </button>
+            ${ticket.status === 'Pending' 
+              ? `<button class="btn btn-sm btn-primary" onclick="acknowledgeTicket(${ticket.ticket_id})">Acknowledge</button>`
+              : `<button class="btn btn-sm btn-outline-secondary" disabled>Acknowledged</button>`
+            }
           </td>
         `;
-        tbody.appendChild(row);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateAnalyticsCharts(high, moderate, low, pending, acknowledged) {
+      // 1. Doughnut Chart: Risk Level Breakdown
+      const ctxRisk = document.getElementById('riskDistributionChart').getContext('2d');
+      if (riskChartInstance) riskChartInstance.destroy();
+
+      riskChartInstance = new Chart(ctxRisk, {
+        type: 'doughnut',
+        data: {
+          labels: ['High Risk (>=11.1 mmol/L)', 'Moderate Risk (7.0-11.0)', 'Low Risk (<7.0)'],
+          datasets: [{
+            data: [high, moderate, low],
+            backgroundColor: ['#dc2626', '#d97706', '#16a34a'],
+            borderWidth: 2,
+            borderColor: '#ffffff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom' }
+          }
+        }
+      });
+
+      // 2. Bar Chart: Workflow Status Breakdown
+      const ctxStatus = document.getElementById('statusChart').getContext('2d');
+      if (statusChartInstance) statusChartInstance.destroy();
+
+      statusChartInstance = new Chart(ctxStatus, {
+        type: 'bar',
+        data: {
+          labels: ['Pending Acknowledgment', 'Acknowledged'],
+          datasets: [{
+            label: 'Referral Ticket Status',
+            data: [pending, acknowledged],
+            backgroundColor: ['#f59e0b', '#0d9488'],
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+          }
+        }
       });
     }
 
     async function acknowledgeTicket(ticketId) {
       const token = localStorage.getItem('token') || 'DEV_TOKEN';
       try {
-        const res = await fetch(`/api/hrio/acknowledge/${ticketId}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+        const res = await fetch(`/api/hrio/referrals/${ticketId}/acknowledge`, {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${token}` }
         });
-
+        
         if (res.ok) {
-          alert(`Ticket #${ticketId} acknowledged and referred to HCP.`);
-          fetchPendingReferrals();
+          loadTriageLogs();
         } else {
-          const errData = await res.json();
-          alert(`Failed to acknowledge: ${errData.error || 'Server error'}`);
+          alert('Failed to update ticket status.');
         }
       } catch (err) {
-        alert(`Network error: ${err.message}`);
+        alert('Network error acknowledging ticket.');
       }
     }
 
-    if (socket) {
-      socket.on('new_high_risk_patient', (data) => {
-        console.log('⚡ Real-time referral received via Socket.io:', data);
-        fetchPendingReferrals();
-      });
-    }
-
     function logout() {
-  localStorage.removeItem('token');
-  window.location.href = '/index.html';
-}
-
-    function escapeHtml(str) {
-      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      localStorage.removeItem('token');
+      window.location.href = '/index.html';
     }
+
+    loadTriageLogs();
   </script>
 </body>
 </html>
