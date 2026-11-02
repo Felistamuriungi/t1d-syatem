@@ -27,6 +27,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 // Authentication Middleware with DEV Token Fallback
+// WARNING: remove the DEV_TOKEN bypass before any real deployment.
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -58,15 +59,16 @@ io.on('connection', (socket) => {
   });
 });
 
-// --- 1. SECURE AUTHENTICATION ROUTE (WITH BCRYPT) ---
+// --- 1. AUTHENTICATION ROUTE ---
+// NOTE: this is still the development login (role chosen by phone prefix,
+// password not checked). Replace with a real users-table lookup + bcrypt.compare
+// before handling real patient data.
 app.post('/api/auth/login', async (req, res) => {
   const { phone, password } = req.body;
 
   try {
-    if (password) {
-      const salt = await bcrypt.genSalt(10);
-      const sampleHash = await bcrypt.hash(password, salt);
-      console.log(`🔐 [SECURITY AUDIT] Plaintext Password: "${password}" -> Bcrypt Hash: ${sampleHash}`);
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Phone and password are required' });
     }
 
     let roleId = 2; // Default HRIO
@@ -128,9 +130,10 @@ const handlePendingReferrals = async (req, res) => {
 
 app.get('/api/hrio/pending', authenticateToken, handlePendingReferrals);
 app.get('/api/referrals/pending', authenticateToken, handlePendingReferrals);
+app.get('/api/hrio/referrals', authenticateToken, handlePendingReferrals); // used by hrio.html
 
 // --- 3. ACKNOWLEDGE TICKET (HRIO -> HCP) ---
-app.put('/api/hrio/acknowledge/:id', authenticateToken, async (req, res) => {
+const handleAcknowledge = async (req, res) => {
   const ticketId = req.params.id;
   try {
     const result = await db.query(
@@ -158,7 +161,10 @@ app.put('/api/hrio/acknowledge/:id', authenticateToken, async (req, res) => {
     console.error('❌ ACKNOWLEDGE ERROR:', err);
     res.status(500).json({ error: `Failed to acknowledge ticket: ${err.message}` });
   }
-});
+};
+
+app.put('/api/hrio/acknowledge/:id', authenticateToken, handleAcknowledge);
+app.patch('/api/hrio/referrals/:id/acknowledge', authenticateToken, handleAcknowledge); // used by hrio.html
 
 // --- 4. GET HCP CASES QUEUE ---
 const handleHCPCases = async (req, res) => {
@@ -272,8 +278,15 @@ app.post('/api/chp/triage', authenticateToken, async (req, res) => {
         [triageId]
       );
 
-      // Real-time Push Notification to HRIO Workspace
-      io.emit('new_referral', ticketRes.rows[0]);
+      const ticket = ticketRes.rows[0];
+
+      // Real-time push notifications to the HRIO workspace
+      io.emit('new_referral', ticket);
+      io.emit('high_risk_alert', {            // event name hrio.html listens for
+        ticketId: ticket.ticket_id,
+        fullName: fullName.trim(),
+        rbsValue: parsedRbs
+      });
 
       // Format phone number to international E.164 (+254...) for Africa's Talking
       let formattedPhone = contact.trim();
@@ -281,10 +294,12 @@ app.post('/api/chp/triage', authenticateToken, async (req, res) => {
         formattedPhone = '+254' + formattedPhone.substring(1);
       } else if (formattedPhone.startsWith('254')) {
         formattedPhone = '+' + formattedPhone;
+      } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+254' + formattedPhone; // bare 9-digit number (7XXXXXXXX / 1XXXXXXXX)
       }
 
       // Complete SMS Payload
-      const smsMessage = `ALERT: Dear ${fullName} (ID: ${birthCertNo.trim()}), your T1D screening with the CHP indicates high blood sugar (${parsedRbs} mmol/L). An urgent clinical appointment has been scheduled at the county hospital. Please present to the lab/pediatric clinic immediately.`;
+      const smsMessage = `ALERT: Dear ${fullName.trim()} (ID: ${birthCertNo.trim()}), your T1D screening with the CHP indicates high blood sugar (${parsedRbs} mmol/L). An urgent clinical appointment has been scheduled at the county hospital. Please present to the lab/pediatric clinic immediately.`;
 
       const smsOptions = {
         to: [formattedPhone],
