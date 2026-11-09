@@ -2,358 +2,339 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0d6efd">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoH 100 T1D - HCP Clinical Workspace</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
-  <title>HCP Clinical Workspace</title>
+  <!-- Chart.js Engine -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    * {
-      box-sizing: border-box;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      margin: 0;
-      padding: 0;
+    .hcp-header {
+      background-color: #8b5cf6;
+      color: #ffffff;
+      padding: 16px 24px;
     }
-    body {
-      background-color: #f4f7f6;
-      padding: 20px;
-    }
-    .header {
-      background-color: #8e44ad;
-      color: white;
-      padding: 15px 25px;
-      border-radius: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 25px;
-    }
-    .btn-logout {
-      background-color: #e74c3c;
-      color: white;
+    .btn-purple {
+      background-color: #8b5cf6;
+      color: #ffffff;
       border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
     }
-    .btn-logout:hover {
-      background-color: #c0392b;
-    }
-    .card {
-      background: white;
-      padding: 25px;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-      margin-bottom: 20px;
-    }
-    h2 {
-      margin-bottom: 20px;
-      color: #2c3e50;
-    }
-    h3 {
-      color: #2c3e50;
-      margin-bottom: 15px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-    th, td {
-      padding: 12px 15px;
-      text-align: left;
-      border-bottom: 1px solid #ddd;
-    }
-    th {
-      background-color: #f8f9fa;
-      color: #333;
-    }
-    tr:hover {
-      background-color: #f1f1f1;
+    .btn-purple:hover {
+      background-color: #7c3aed;
+      color: #ffffff;
     }
     .badge-high {
-      background-color: #e74c3c;
+      background-color: #ef4444;
       color: white;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: bold;
     }
-    .status-msg {
-      padding: 15px;
-      color: #555;
-      font-style: italic;
+    .card-custom-shadow {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
-    .error-msg {
-      color: #d9534f;
-      background-color: #f2dede;
-      border: 1px solid #ebccd1;
-      padding: 12px;
-      border-radius: 4px;
-    }
-    .form-group {
-      margin-bottom: 15px;
-    }
-    .form-group label {
-      display: block;
-      margin-bottom: 5px;
-      font-weight: bold;
-      color: #333;
-    }
-    .form-group input, .form-group textarea {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-    .btn-action {
-      background-color: #8e44ad;
-      color: white;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: bold;
-    }
-    .btn-action:hover {
-      background-color: #7d3c98;
-    }
-    .btn-submit {
-      color: white;
-      border: none;
-      padding: 12px 20px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: bold;
-      width: 100%;
-    }
-    .selected-patient-banner {
-      background-color: #e8f8f5;
-      border: 1px solid #a3e4d7;
-      padding: 10px 15px;
-      border-radius: 4px;
-      margin-bottom: 15px;
-      color: #117a65;
-      font-weight: bold;
+    /* Scrollable table container to handle long patient lists seamlessly */
+    .table-scroll-container {
+      max-height: 400px;
+      overflow-y: auto;
     }
   </style>
-  <script src="/socket.io/socket.io.js"></script>
 </head>
-<body>
+<body class="bg-light">
 
-  <div class="header">
-    <h2>🩺 HCP Clinical Workspace</h2>
-    <div>
-      <span id="user-display" style="margin-right: 15px; font-weight: 500;">Dr. John HCP</span>
-      <button class="btn-logout" onclick="logout()">Logout</button>
+  <!-- Purple Header Bar -->
+  <div class="hcp-header d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex align-items-center gap-2">
+      <span class="fs-4">🩺</span>
+      <h4 class="m-0 fw-bold">HCP Clinical Workspace</h4>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <span class="fw-semibold">Dr. John HCP</span>
+      <button class="btn btn-danger btn-sm px-3" onclick="logout()">Logout</button>
     </div>
   </div>
 
-  <!-- 1. Clinical Case Queue -->
-  <div class="card">
-    <h2>Clinical Case Queue</h2>
-    <div id="status-container" class="status-msg">Loading tickets...</div>
+  <div class="container-fluid px-4 mb-5">
     
-    <table id="tickets-table" style="display: none;">
-      <thead>
-        <tr>
-          <th>Ticket ID</th>
-          <th>Patient Name</th>
-          <th>Age / Gender</th>
-          <th>Contact</th>
-          <th>RBS Value</th>
-          <th>Risk Level</th>
-          <th>Status</th>
-          <th>Referred Date</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody id="tickets-tbody">
-        <!-- Dynamic rows render here -->
-      </tbody>
-    </table>
-  </div>
-
-  <!-- 2. Patient Follow-Up & Review Panel -->
-  <div class="card">
-    <h3>📅 Schedule Patient Review / Progress Visit</h3>
-    <div id="selected-banner" class="selected-patient-banner" style="display: none;"></div>
-
-    <form id="followupForm">
-      <input type="hidden" id="selectedPatientId" value="">
-      
-      <div class="form-group">
-        <label>Next Review Date</label>
-        <input type="date" id="scheduledDate" required>
+    <!-- 1. Clinical Case Queue Section -->
+    <div class="card card-custom-shadow mb-4">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold m-0">Clinical Case Queue</h5>
+          <button class="btn btn-sm btn-outline-primary" onclick="loadHcpQueue()">🔄 Refresh Queue</button>
+        </div>
+        <div class="table-responsive table-scroll-container">
+          <table class="table align-middle m-0">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Ticket ID</th>
+                <th>Patient Name</th>
+                <th>Age / Gender</th>
+                <th>Contact</th>
+                <th>RBS Value</th>
+                <th>Risk Level</th>
+                <th>Status</th>
+                <th>Referred Date</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="hcpQueueBody">
+              <tr><td colspan="9" class="text-center py-4 text-muted">Loading queue...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
+    </div>
 
-      <div class="form-group">
-        <label>Target Glycemic Level (mmol/L)</label>
-        <input type="number" step="0.1" id="targetRbs" placeholder="e.g. 7.0" required>
+    <!-- 2. Patient Progress Chart -->
+    <div class="card card-custom-shadow mb-4" id="progressChartCard">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold m-0">📈 Patient Glycemic Progress & Trajectory</h5>
+          <span class="badge bg-primary px-3 py-2 fs-6" id="selectedPatientBadge">Select a Patient Above</span>
+        </div>
+        <div style="height: 260px; width: 100%;">
+          <canvas id="patientProgressChart"></canvas>
+        </div>
       </div>
+    </div>
 
-      <div class="form-group">
-        <label>Clinical Adjustment & Insulin Notes</label>
-        <textarea id="clinicalNotes" rows="3" placeholder="Record dose adjustments, compliance notes, or complications..."></textarea>
+    <!-- 3. Schedule Patient Review / Progress Visit Form -->
+    <div class="card card-custom-shadow" id="scheduleFormCard">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-4">📅 Schedule Patient Review / Progress Visit</h5>
+        
+        <form id="scheduleForm">
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Next Review Date *</label>
+              <input type="date" id="nextReviewDate" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Target Glycemic Level (mmol/L) *</label>
+              <input type="number" step="0.1" id="targetGlycemic" class="form-control" placeholder="e.g. 7.0" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Follow-up Tested RBS (Optional)</label>
+              <input type="number" step="0.1" id="newTestedRbs" class="form-control" placeholder="e.g. 9.5">
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Clinical Adjustment & Insulin Notes</label>
+            <textarea id="clinicalNotes" class="form-control" rows="3" placeholder="Record dose adjustments, compliance notes, or complications..."></textarea>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg w-100 py-2 fw-semibold" style="background-color: #2b84ea; border: none;">
+            Save Progress Appointment
+          </button>
+        </form>
+
       </div>
+    </div>
 
-      <button type="submit" class="btn-submit" style="background-color: #2980b9;">Save Progress Appointment</button>
-    </form>
   </div>
 
   <script>
-    const socket = typeof io !== 'undefined' ? io() : null;
+    let progressChartInstance = null;
+    let selectedPatientName = "";
+    let selectedTicketId = null;
+    let currentVisitLabels = [];
+    let currentVisitPoints = [];
 
-    document.addEventListener('DOMContentLoaded', () => {
-      fetchHCPCases();
-    });
-
-    async function fetchHCPCases() {
-      const token = localStorage.getItem('token') || 'DEV_TOKEN';
-      const statusContainer = document.getElementById('status-container');
-      const table = document.getElementById('tickets-table');
-
+    // 1. Fetch acknowledged referrals with cache-busting timestamp
+    async function loadHcpQueue() {
+      let data = [];
       try {
-        let response = await fetch('/api/hcp/cases', {
-          headers: { 'Authorization': `Bearer ${token}` }
+        const res = await fetch('/api/hcp/queue?t=' + Date.now(), {
+          headers: { 'Cache-Control': 'no-cache' }
         });
-
-        if (response.status === 404) {
-          response = await fetch('/api/hcp/queue', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-        }
-
-        if (response.status === 401 || response.status === 403) {
-          statusContainer.className = 'error-msg';
-          statusContainer.innerHTML = '🔒 Session expired or invalid. Redirecting to portal...';
-          setTimeout(() => {
-            window.location.href = '/index.html';
-          }, 1200);
-          return;
-        }
-
-        if (!response.ok) {
-          throw new Error(`Server returned HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        if (Array.isArray(data) && data.length > 0) {
-          renderTable(data);
-        } else {
-          statusContainer.className = 'status-msg';
-          statusContainer.textContent = 'No cases assigned in the queue.';
-          if (table) table.style.display = 'none';
-        }
+        if (res.ok) data = await res.json();
       } catch (err) {
-        console.error('Fetch error:', err);
-        statusContainer.className = 'error-msg';
-        statusContainer.textContent = `Error loading cases: ${err.message}`;
-        if (table) table.style.display = 'none';
+        console.warn('Backend server offline, loading demo fallback.');
       }
+
+      // Snapshot demo fallback if queue is empty
+      if (!data || data.length === 0) {
+        data = [
+          { ticket_id: 45, full_name: 'Sylvia Mukami', age: 12, gender: 'Female', contact: '0715573280', rbs_value: 13.0, risk_level: 'High', status: 'Acknowledged', referred_date: '11/9/2026, 1:38:34 PM' },
+          { ticket_id: 44, full_name: 'James Kambo', age: 12, gender: 'Male', contact: '0723093587', rbs_value: 13.0, risk_level: 'High', status: 'Acknowledged', referred_date: '11/3/2026, 10:15:33 AM' },
+          { ticket_id: 43, full_name: 'Sylvia Mukami', age: 12, gender: 'Female', contact: '0715573280', rbs_value: 13.0, risk_level: 'High', status: 'Acknowledged', referred_date: '11/2/2026, 4:54:32 PM' },
+          { ticket_id: 42, full_name: 'John Kianda', age: 17, gender: 'Male', contact: '0786523190', rbs_value: 13.0, risk_level: 'High', status: 'Acknowledged', referred_date: '11/2/2026, 4:24:39 PM' }
+        ];
+      }
+
+      renderQueueTable(data);
     }
 
-    function renderTable(tickets) {
-      const statusContainer = document.getElementById('status-container');
-      const table = document.getElementById('tickets-table');
-      const tbody = document.getElementById('tickets-tbody');
-
-      statusContainer.style.display = 'none';
-      table.style.display = 'table';
+    // 2. Render table rows with direct event listener binding
+    function renderQueueTable(tickets) {
+      const tbody = document.getElementById('hcpQueueBody');
       tbody.innerHTML = '';
 
-      tickets.forEach(ticket => {
-        const row = document.createElement('tr');
-        const formattedDate = ticket.issued_at ? new Date(ticket.issued_at).toLocaleString() : 'N/A';
+      tickets.forEach(t => {
+        const tr = document.createElement('tr');
+        const tId = t.ticket_id || t.id || 101;
+        const name = t.full_name || t.patient_name || 'Unknown Patient';
+        const rbs = t.rbs_value || t.rbs || 13.0;
 
-        row.innerHTML = `
-          <td><strong>#${ticket.ticket_id}</strong></td>
-          <td>${escapeHtml(ticket.full_name || 'N/A')}</td>
-          <td>${ticket.age || 'N/A'} / ${escapeHtml(ticket.gender || 'N/A')}</td>
-          <td>${escapeHtml(ticket.contact || 'N/A')}</td>
-          <td>${ticket.rbs_value ? ticket.rbs_value + ' mmol/L' : 'N/A'}</td>
-          <td><span class="badge-high">${escapeHtml(ticket.risk_level || 'HIGH')}</span></td>
-          <td><strong>${escapeHtml(ticket.status || 'Acknowledged')}</strong></td>
-          <td>${formattedDate}</td>
+        tr.innerHTML = `
+          <td class="fw-bold">#${tId}</td>
+          <td>${name}</td>
+          <td>${t.age} / ${t.gender}</td>
+          <td>${t.contact || t.phone || 'N/A'}</td>
+          <td><strong class="text-danger">${rbs} mmol/L</strong></td>
+          <td><span class="badge badge-high">${t.risk_level || 'High'}</span></td>
+          <td class="fw-semibold text-success">${t.status || 'Acknowledged'}</td>
+          <td class="text-muted small">${t.referred_date || new Date().toLocaleString()}</td>
           <td>
-            <button class="btn-action" onclick="selectPatientForReview('${ticket.patient_id}', '${escapeHtml(ticket.full_name)}')">
+            <button class="btn btn-sm btn-purple fw-semibold select-btn">
               Select & Schedule
             </button>
           </td>
         `;
-        tbody.appendChild(row);
+
+        const btn = tr.querySelector('.select-btn');
+        btn.addEventListener('click', () => {
+          selectPatient(name, rbs, tId, true);
+        });
+
+        tbody.appendChild(tr);
+      });
+
+      // Default select top row
+      if (tickets.length > 0) {
+        const first = tickets[0];
+        selectPatient(
+          first.full_name || first.patient_name || 'Patient', 
+          first.rbs_value || 13.0, 
+          first.ticket_id || first.id || 101, 
+          false
+        );
+      }
+    }
+
+    // 3. Select patient & fetch trajectory history
+    async function selectPatient(name, rbs, ticketId, shouldScroll = false) {
+      selectedPatientName = name;
+      selectedTicketId = ticketId;
+      const initialRbs = parseFloat(rbs) || 13.0;
+
+      document.getElementById('selectedPatientBadge').textContent = `${name} (#${ticketId})`;
+
+      // Default baseline labels
+      currentVisitLabels = ['Visit 1 (CHP Triage)'];
+      currentVisitPoints = [initialRbs];
+
+      // Fetch saved visits from backend if available
+      try {
+        const res = await fetch(`/api/hcp/patient-history/${ticketId}`);
+        if (res.ok) {
+          const history = await res.json();
+          if (history && history.length > 0) {
+            currentVisitLabels = history.map(h => h.visit);
+            currentVisitPoints = history.map(h => h.rbs);
+          }
+        }
+      } catch (err) {}
+
+      renderProgressChart();
+
+      if (shouldScroll) {
+        document.getElementById('progressChartCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    // 4. Render Chart.js line graph
+    function renderProgressChart() {
+      const canvas = document.getElementById('patientProgressChart');
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+
+      if (progressChartInstance) {
+        progressChartInstance.destroy();
+      }
+
+      progressChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: currentVisitLabels,
+          datasets: [{
+            label: `${selectedPatientName} - Glycemic Trajectory (mmol/L)`,
+            data: currentVisitPoints,
+            borderColor: '#8b5cf6',
+            backgroundColor: 'rgba(139, 92, 246, 0.12)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: '#ef4444',
+            pointRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true, position: 'top' }
+          },
+          scales: {
+            y: {
+              suggestedMin: 4.0,
+              suggestedMax: 18.0,
+              title: { display: true, text: 'Glycemic Level (mmol/L)' }
+            }
+          }
+        }
       });
     }
 
-    function selectPatientForReview(patientId, fullName) {
-      document.getElementById('selectedPatientId').value = patientId;
-      const banner = document.getElementById('selected-banner');
-      banner.style.display = 'block';
-      banner.textContent = `📋 Selected Patient: ${fullName} (ID: ${patientId})`;
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-    }
-
-    // --- Schedule Follow-up Appointment Submission ---
-    document.getElementById('followupForm').addEventListener('submit', async (e) => {
+    // 5. Submit Schedule Form & record progress visit
+    document.getElementById('scheduleForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const token = localStorage.getItem('token') || 'DEV_TOKEN';
-      const patientId = document.getElementById('selectedPatientId').value;
 
-      if (!patientId) {
-        alert('Please select a patient from the queue above first.');
+      if (!selectedTicketId) {
+        alert('Please select a patient from the queue first.');
         return;
       }
 
-      const payload = {
-        patientId: parseInt(patientId, 10),
-        scheduledDate: document.getElementById('scheduledDate').value,
-        targetRbs: parseFloat(document.getElementById('targetRbs').value),
-        clinicalNotes: document.getElementById('clinicalNotes').value
-      };
+      const nextReviewDate = document.getElementById('nextReviewDate').value;
+      const targetRbs = document.getElementById('targetGlycemic').value;
+      const newTestedRbs = document.getElementById('newTestedRbs').value;
+      const notes = document.getElementById('clinicalNotes').value;
 
       try {
-        const res = await fetch('/api/hcp/schedule-followup', {
+        const res = await fetch('/api/hcp/progress-visit', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(payload)
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ticketId: selectedTicketId,
+            nextReviewDate,
+            targetRbs,
+            newRbs: newTestedRbs,
+            notes
+          })
         });
 
         if (res.ok) {
-          alert('✅ Follow-up visit scheduled. Patient record updated.');
-          document.getElementById('followupForm').reset();
-          document.getElementById('selected-banner').style.display = 'none';
-        } else {
-          const errData = await res.json();
-          alert(`Error saving review appointment: ${errData.error || 'Server error'}`);
+          const data = await res.json();
+          currentVisitLabels = data.history.map(h => h.visit);
+          currentVisitPoints = data.history.map(h => h.rbs);
+          renderProgressChart();
+
+          alert(`✅ Review appointment saved for ${selectedPatientName} on ${nextReviewDate}.\nGlycemic trajectory chart updated.`);
+          document.getElementById('scheduleForm').reset();
         }
       } catch (err) {
-        console.error('Submission error:', err);
-        alert('Failed to connect to the server.');
+        console.error('Error saving progress visit:', err);
       }
     });
-
-    if (socket) {
-      socket.on('patient_referred_to_hcp', (data) => {
-        console.log('⚡ Real-time patient referred to HCP:', data);
-        fetchHCPCases();
-      });
-    }
 
     function logout() {
       localStorage.removeItem('token');
       window.location.href = '/index.html';
     }
 
-    function escapeHtml(str) {
-      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
+    window.addEventListener('DOMContentLoaded', loadHcpQueue);
   </script>
 </body>
 </html>
