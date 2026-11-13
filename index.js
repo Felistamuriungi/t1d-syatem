@@ -67,24 +67,41 @@ io.on('connection', (socket) => {
   });
 });
 
-// --- 1. AUTHENTICATION ROUTE ---
+// --- 1. AUTHENTICATION ROUTE (DATABASE + BCRYPT + EXACT COLUMN MATCH) ---
 app.post('/api/auth/login', async (req, res) => {
   const { phone, password } = req.body;
 
   try {
     if (!phone || !password) {
-      return res.status(400).json({ error: 'Phone and password are required' });
+      return res.status(400).json({ error: 'Phone and password are required.' });
     }
 
-    let roleId = 2; // Default HRIO
-    if (phone.startsWith('073') || phone.startsWith('070')) {
-      roleId = 3; // HCP
-    } else if (phone.startsWith('071')) {
-      roleId = 1; // CHP
+    // Lookup user in PostgreSQL using the exact column name 'phone_number'
+    const userRes = await db.query(
+      `SELECT u.*, r.role_name 
+       FROM users u 
+       JOIN roles r ON u.role_id = r.role_id 
+       WHERE u.phone_number = $1`,
+      [phone.trim()]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid phone number or password.' });
     }
 
+    const user = userRes.rows[0];
+
+    // Compare hashed password
+    const validPassword = await bcrypt.compare(password, user.password_hash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid phone number or password.' });
+    }
+
+    const displayName = user.full_name || user.username || user.name || user.role_name;
+
+    // Issue signed JWT token
     const token = jwt.sign(
-      { userId: 1, roleId, phone },
+      { userId: user.user_id, roleId: user.role_id, roleName: user.role_name },
       JWT_SECRET,
       { expiresIn: '8h' }
     );
@@ -92,14 +109,15 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({
       token,
       user: {
-        userId: 1,
-        roleId,
-        fullName: 'Test User'
+        userId: user.user_id,
+        roleId: user.role_id,
+        roleName: user.role_name,
+        fullName: displayName
       }
     });
   } catch (err) {
     console.error('❌ LOGIN ERROR:', err);
-    res.status(500).json({ error: `Authentication error: ${err.message}` });
+    res.status(500).json({ error: `Authentication failed: ${err.message}` });
   }
 });
 
@@ -285,10 +303,11 @@ app.post('/api/chp/triage', authenticateToken, async (req, res) => {
   }
 
   try {
-    // 1. Patient Deduplication
+    
+   // 1. Patient Deduplication by Birth Certificate No (allows siblings to share a guardian phone)
     let patientRes = await db.query(
-      `SELECT patient_id FROM patients WHERE birth_certificate_no = $1 OR contact = $2`,
-      [birthCertNo.trim(), contact.trim()]
+      `SELECT patient_id FROM patients WHERE birth_certificate_no = $1`,
+      [birthCertNo.trim()]
     );
 
     let patientId;
@@ -302,6 +321,12 @@ app.post('/api/chp/triage', authenticateToken, async (req, res) => {
       patientId = newPatient.rows[0].patient_id;
     } else {
       patientId = patientRes.rows[0].patient_id;
+      await db.query(
+        `UPDATE patients 
+         SET full_name = $1, age = $2, gender = $3, contact = $4
+         WHERE patient_id = $5`,
+        [fullName.trim(), parsedAge, gender, contact.trim(), patientId]
+      );
     }
 
     // 2. Persist Triage Entry
@@ -384,94 +409,165 @@ app.post('/api/chp/triage', authenticateToken, async (req, res) => {
   }
 });
 
-// --- 6. SCHEDULE FOLLOW-UP VISITS & RECORD VISITS (HCP Workspace) ---
+// --- 6. SCHEDULE FOLLOW-UP VISITS & RECORD VISITS (PERMANENT DB + MEMORY FALLBACK) ---
 const handleScheduleFollowup = async (req, res) => {
   const { patientId, ticketId, nextReviewDate, scheduledDate, targetRbs, targetGlycemic, newRbs, clinicalNotes } = req.body;
   const hcpId = req.user.userId || 1;
-  const activeId = String(ticketId || patientId || '').replace('#', '');
+  const cleanId = String(ticketId || patientId || '').replace('#', '');
   const rbsVal = newRbs ? parseFloat(newRbs) : parseFloat(targetRbs || targetGlycemic || 7.0);
   const dateVal = scheduledDate || nextReviewDate || new Date().toISOString().split('T')[0];
 
   try {
-    if (patientId) {
-      await db.query(
-        `INSERT INTO follow_up_appointments (patient_id, hcp_id, scheduled_date, target_rbs, clinical_notes) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [patientId, hcpId, dateVal, rbsVal, clinicalNotes || '']
+    // 1. Resolve patient_id from referral_tickets if only ticketId was provided
+    let resolvedPatientId = patientId || null;
+    if (!resolvedPatientId && cleanId) {
+      const lookupRes = await db.query(
+        `SELECT tl.patient_id 
+         FROM referral_tickets rt
+         JOIN triage_logs tl ON rt.triage_id = tl.triage_id
+         WHERE rt.ticket_id = $1`,
+        [cleanId]
       );
+      if (lookupRes.rows.length > 0) {
+        resolvedPatientId = lookupRes.rows[0].patient_id;
+      }
     }
+
+    // 2. Count existing visits in DB to generate accurate sequential visit label
+    const countRes = await db.query(
+      `SELECT COUNT(*) FROM follow_up_appointments WHERE ticket_id = $1`,
+      [cleanId]
+    );
+    const visitNum = parseInt(countRes.rows[0].count, 10) + 2; // Visit 1 is initial CHP Triage
+    const visitLabel = newRbs ? `Visit ${visitNum} (Tested)` : `Visit ${visitNum} (Target)`;
+
+    // 3. Persist follow-up record permanently in PostgreSQL
+    await db.query(
+      `INSERT INTO follow_up_appointments 
+       (patient_id, ticket_id, hcp_id, visit_label, tested_rbs, target_rbs, scheduled_date, clinical_notes) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [resolvedPatientId, cleanId || null, hcpId, visitLabel, rbsVal, parseFloat(targetRbs || targetGlycemic || rbsVal), dateVal, clinicalNotes || '']
+    );
+
+    // 4. Fetch complete trajectory (Visit 1 baseline + all follow-ups) directly from PostgreSQL
+    const baselineRes = await db.query(
+      `SELECT tl.rbs_value, rt.issued_at
+       FROM referral_tickets rt
+       JOIN triage_logs tl ON rt.triage_id = tl.triage_id
+       WHERE rt.ticket_id = $1`,
+      [cleanId]
+    );
+
+    const dbHistory = [];
+    if (baselineRes.rows.length > 0) {
+      dbHistory.push({
+        visit: 'Visit 1 (CHP Triage)',
+        rbs: parseFloat(baselineRes.rows[0].rbs_value),
+        date: baselineRes.rows[0].issued_at
+      });
+    }
+
+    const followUpsRes = await db.query(
+      `SELECT 
+         COALESCE(visit_label, 'Follow-up Visit') AS visit, 
+         COALESCE(tested_rbs, target_rbs) AS rbs, 
+         scheduled_date AS date, 
+         clinical_notes AS notes
+       FROM follow_up_appointments 
+       WHERE ticket_id = $1 
+       ORDER BY appointment_id ASC`,
+      [cleanId]
+    );
+
+    const fullHistory = [...dbHistory, ...followUpsRes.rows];
+    memoryVisitHistory[cleanId] = fullHistory;
+
+    return res.json({
+      message: 'Follow-up review saved permanently to database',
+      history: fullHistory
+    });
+
   } catch (err) {
-    console.warn('⚠️ DB insert error for followup:', err.message);
-  }
+    console.warn('⚠️ DB insert error for followup, using memory fallback:', err.message);
 
-  // Record into Trajectory History for Chart rendering
-  if (activeId) {
-    if (!memoryVisitHistory[activeId]) {
-      memoryVisitHistory[activeId] = [
-        { visit: 'Visit 1 (CHP Triage)', rbs: 13.0, date: 'Baseline' }
-      ];
+    // Memory Fallback Trajectory Update
+    if (cleanId) {
+      if (!memoryVisitHistory[cleanId]) {
+        memoryVisitHistory[cleanId] = [
+          { visit: 'Visit 1 (CHP Triage)', rbs: 13.0, date: 'Baseline' }
+        ];
+      }
+
+      const visitNum = memoryVisitHistory[cleanId].length + 1;
+      const label = newRbs ? `Visit ${visitNum} (Tested)` : `Visit ${visitNum} (Target)`;
+      
+      memoryVisitHistory[cleanId].push({
+        visit: label,
+        rbs: rbsVal,
+        date: dateVal,
+        notes: clinicalNotes || ''
+      });
     }
 
-    const visitNum = memoryVisitHistory[activeId].length + 1;
-    const label = newRbs ? `Visit ${visitNum} (Tested)` : `Visit ${visitNum} (Target)`;
-    
-    memoryVisitHistory[activeId].push({
-      visit: label,
-      rbs: rbsVal,
-      date: dateVal,
-      notes: clinicalNotes || ''
+    return res.json({
+      message: 'Follow-up review scheduled (Memory Fallback)',
+      history: memoryVisitHistory[cleanId] || []
     });
   }
-
-  res.json({
-    message: 'Follow-up review scheduled successfully',
-    history: memoryVisitHistory[activeId] || []
-  });
 };
 
 app.post('/api/hcp/schedule-followup', authenticateToken, handleScheduleFollowup);
 app.post('/api/hcp/progress-visit', authenticateToken, handleScheduleFollowup);
 
-// --- 7. PATIENT APPOINTMENT & VISITS HISTORY ---
+// --- 7. PATIENT APPOINTMENT & VISITS HISTORY (PERMANENT DB + MEMORY FALLBACK) ---
 const handlePatientHistory = async (req, res) => {
-  const rawId = req.params.patientId || req.params.ticketId;
-  const activeId = String(rawId).replace('#', '');
+  const rawId = req.params.ticketId || req.params.patientId;
+  const cleanId = String(rawId).replace('#', '');
 
-  let historyRows = [];
   try {
-    // Fixed: Standardized to u.username or fallback to prevent 'column u.full_name does not exist' error
-    const history = await db.query(
-      `SELECT f.*, COALESCE(u.username, 'Attending HCP') as doctor_name 
-       FROM follow_up_appointments f
-       LEFT JOIN users u ON f.hcp_id = u.user_id
-       WHERE f.patient_id = $1 
-       ORDER BY f.scheduled_date DESC`,
-      [activeId]
+    // 1. Fetch initial CHP triage RBS as Visit 1
+    const baselineRes = await db.query(
+      `SELECT tl.rbs_value, rt.issued_at
+       FROM referral_tickets rt
+       JOIN triage_logs tl ON rt.triage_id = tl.triage_id
+       WHERE rt.ticket_id = $1`,
+      [cleanId]
     );
-    historyRows = history.rows || [];
-  } catch (err) {
-    // If the follow_up_appointments table or user join fails, fallback gracefully without spamming terminal
-    try {
-      const fallbackHistory = await db.query(
-        `SELECT * FROM follow_up_appointments WHERE patient_id = $1 ORDER BY scheduled_date DESC`,
-        [activeId]
-      );
-      historyRows = fallbackHistory.rows || [];
-    } catch (innerErr) {
-      // Quiet fallback to memory array
+
+    const history = [];
+    if (baselineRes.rows.length > 0) {
+      history.push({
+        visit: 'Visit 1 (CHP Triage)',
+        rbs: parseFloat(baselineRes.rows[0].rbs_value),
+        date: baselineRes.rows[0].issued_at
+      });
     }
+
+    // 2. Fetch all follow-up visits logged by the HCP
+    const followUpsRes = await db.query(
+      `SELECT 
+         COALESCE(visit_label, 'Follow-up Visit') AS visit, 
+         COALESCE(tested_rbs, target_rbs) AS rbs, 
+         scheduled_date AS date, 
+         clinical_notes AS notes
+       FROM follow_up_appointments 
+       WHERE ticket_id = $1 
+       ORDER BY appointment_id ASC`,
+      [cleanId]
+    );
+
+    const combinedHistory = [...history, ...followUpsRes.rows];
+    if (combinedHistory.length > 0) {
+      return res.json(combinedHistory);
+    }
+  } catch (err) {
+    console.warn('⚠️ Error fetching DB trajectory, falling back to memory:', err.message);
   }
 
-  // Merge with trajectory history if available
-  const trajectoryHistory = memoryVisitHistory[activeId] || [];
-  if (historyRows.length === 0 && trajectoryHistory.length > 0) {
-    return res.json(trajectoryHistory);
-  }
-
-  res.json(historyRows);
+  // Fallback to memory array if DB query returns empty or fails
+  return res.json(memoryVisitHistory[cleanId] || []);
 };
 
-app.get('/api/hcp/patient-history/:patientId', authenticateToken, handlePatientHistory);
 app.get('/api/hcp/patient-history/:ticketId', authenticateToken, handlePatientHistory);
 
 // Start Server
