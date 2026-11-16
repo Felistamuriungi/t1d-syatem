@@ -37,6 +37,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
+  // Never cache API calls
   if (event.request.url.includes('/api/')) {
     event.respondWith(fetch(event.request));
     return;
@@ -45,10 +46,20 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        const clone = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
         return networkResponse;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => {
+        const cachedResponse = await caches.match(event.request, { ignoreSearch: true });
+        if (cachedResponse) return cachedResponse;
+
+        // Explicit fallback if refreshing a page offline
+        if (event.request.mode === 'navigate') {
+          return (await caches.match('/chp.html')) || (await caches.match('/index.html'));
+        }
+      })
   );
 });
